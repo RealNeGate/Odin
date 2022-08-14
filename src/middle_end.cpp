@@ -141,12 +141,12 @@ meProcedure *me_procedure_create(meModule *m, Entity *entity, bool ignore_body) 
 	p->type_expr      = decl->type_expr;
 	p->body           = pl->body;
 	switch (pl->inlining) {
-	case ProcInlining_none:
+        case ProcInlining_none:
 		break;
-	case ProcInlining_inline:
+        case ProcInlining_inline:
 		p->flags |= meProcedureFlag_Inline;
 		break;
-	case ProcInlining_no_inline:
+        case ProcInlining_no_inline:
 		p->flags |= meProcedureFlag_NoInline;
 		break;
 	}
@@ -239,7 +239,22 @@ void me_procedure_body_begin(meProcedure *p) {
 
 	{
 		// TODO(bill): parameter types
+		// unsigned param_offset = 0;
+
+		if (p->type->Proc.params != nullptr) {
+			TypeTuple *params = &p->type->Proc.params->Tuple;
+
+			for_array(i, params->variables) {
+				Entity *e = params->variables[i];
+				if (e->kind != Entity_Variable) {
+					continue;
+				}
+
+				me_add_entity(p->module, e, me_add_param(p, e->type, e));
+			}
+		}
 	}
+
 	if (p->type->Proc.calling_convention == ProcCC_Odin) {
 		me_push_context_onto_stack_from_implicit_parameter(p);
 	}
@@ -297,22 +312,24 @@ void me_generate_procedure(meModule *m, meProcedure *p) {
 		return;
 	}
 	if (p->body != nullptr) {
+		String file = get_file_path_string(p->entity->token.pos.file_id);
+		gb_printf_err("[procedure] %.*s (%.*s : %d)\n", LIT(p->name), LIT(file), p->entity->token.pos.line);
+
 		m->curr_procedure = p;
 		me_procedure_body_begin(p);
 		me_build_stmt(p, p->body);
 		me_procedure_body_end(p);
+		me_print_ir(p);
 		p->is_done = true;
 		m->curr_procedure = nullptr;
 	}
 
-	gb_printf_err("[procedure] %.*s\n", LIT(p->name));
-
 	// Add Flags
 	if (p->body != nullptr) {
 		if (p->name == "memcpy" || p->name == "memmove" ||
-		    p->name == "runtime.mem_copy" || p->name == "mem_copy_non_overlapping" ||
-		    string_starts_with(p->name, str_lit("llvm.memcpy")) ||
-		    string_starts_with(p->name, str_lit("llvm.memmove"))) {
+			p->name == "runtime.mem_copy" || p->name == "mem_copy_non_overlapping" ||
+			string_starts_with(p->name, str_lit("llvm.memcpy")) ||
+			string_starts_with(p->name, str_lit("llvm.memmove"))) {
 			p->flags |= meProcedureFlag_WithoutMemcpy;
 		}
 	}
@@ -326,7 +343,70 @@ bool me_generate(Checker *c) {
 	}
 	CheckerInfo *info = &c->info;
 	auto *min_dep_set = &info->minimum_dependency_set;
+	meGenerator *gen = &me_gen;
 
+	for_array(i, info->variable_init_order) {
+		DeclInfo *d = info->variable_init_order[i];
+
+		Entity *e = d->entity;
+
+		if ((e->scope->flags & ScopeFlag_File) == 0) {
+			continue;
+		}
+
+		if (!ptr_set_exists(min_dep_set, e)) {
+			continue;
+		}
+		DeclInfo *decl = decl_info_of_entity(e);
+		if (decl == nullptr) {
+			continue;
+		}
+		GB_ASSERT(e->kind == Entity_Variable);
+
+		bool is_foreign = e->Variable.is_foreign;
+		bool is_export  = e->Variable.is_export;
+
+
+		meModule *m = &gen->default_module;
+		String name = me_get_entity_name(m, e);
+
+		meGlobalVariable *g = me_new(meGlobalVariable);
+		g->name = name;
+		g->type = base_type(e->type);
+		g->decl = e->decl_info;
+
+		if (e->Variable.thread_local_model != "") {
+			String s = e->Variable.thread_local_model;
+			if (s == "default") {
+				g->flags = meGlobalVariableFlag_ThreadLocal_default;
+			} else if (s == "localdynamic") {
+				g->flags = meGlobalVariableFlag_ThreadLocal_localdynamic;
+			} else if (s == "initialexec") {
+				g->flags = meGlobalVariableFlag_ThreadLocal_initialexec;
+			} else if (s == "localexec") {
+				g->flags = meGlobalVariableFlag_ThreadLocal_localexec;
+			} else {
+				GB_PANIC("Unhandled thread local mode %.*s", LIT(s));
+			}
+		}
+
+		g->linkage = meLinkage_Strong;
+		if (g->flags & meProcedureFlag_Foreign) {
+			me_add_foreign_library_path(m, e->Variable.foreign_library);
+		}
+
+		if (is_export) {
+			g->linkage = meLinkage_Export;
+		} else {
+			if (!is_foreign) {
+				g->linkage = meLinkage_Strong;
+			} else {
+				g->linkage = meLinkage_Internal;
+			}
+		}
+
+		me_add_entity(m, e, me_value(g));
+	}
 
 	for_array(i, info->entities) {
 		Entity *e = info->entities[i];
@@ -341,14 +421,14 @@ bool me_generate(Checker *c) {
 		GB_ASSERT(package_scope->flags & ScopeFlag_Pkg);
 
 		switch (e->kind) {
-		case Entity_Variable:
+			case Entity_Variable:
 			// NOTE(bill): Handled above as it requires a specific load order
 			continue;
-		case Entity_ProcGroup:
-		case Entity_TypeName:
+			case Entity_ProcGroup:
+			case Entity_TypeName:
 			continue;
 
-		case Entity_Procedure:
+			case Entity_Procedure:
 			break;
 		}
 
@@ -361,7 +441,7 @@ bool me_generate(Checker *c) {
 		String mangled_name = me_get_entity_name(m, e);
 
 		switch (e->kind) {
-		case Entity_Procedure:
+			case Entity_Procedure:
 			array_add(&m->procedures_to_generate, me_procedure_create(m, e));
 			break;
 		}

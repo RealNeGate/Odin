@@ -141,7 +141,7 @@ void me_emit_defer_stmts(meProcedure *p, meDeferExitKind kind, meBlock *block) {
 
 		if (kind == meDeferExit_Default) {
 			if (p->scope_index == d.scope_index &&
-			    d.scope_index > 0) { // TODO(bill): Which is correct: > 0 or > 1?
+				d.scope_index > 0) { // TODO(bill): Which is correct: > 0 or > 1?
 				me_build_defer_stmt(p, d);
 				array_pop(&p->defer_stmts);
 				continue;
@@ -241,13 +241,13 @@ void me_build_stmt_list(meProcedure *p, Slice<Ast *> const &stmts) {
 	for_array(i, stmts) {
 		Ast *stmt = stmts[i];
 		switch (stmt->kind) {
-		case_ast_node(vd, ValueDecl, stmt);
+			case_ast_node(vd, ValueDecl, stmt);
 			// me_build_constant_value_decl(p, vd);
-		case_end;
-		case_ast_node(fb, ForeignBlockDecl, stmt);
+			case_end;
+			case_ast_node(fb, ForeignBlockDecl, stmt);
 			ast_node(block, BlockStmt, fb->body);
 			me_build_stmt_list(p, block->stmts);
-		case_end;
+			case_end;
 		}
 	}
 	for_array(i, stmts) {
@@ -263,13 +263,13 @@ void me_build_when_stmt(meProcedure *p, AstWhenStmt *ws) {
 		me_build_stmt_list(p, ws->body->BlockStmt.stmts);
 	} else if (ws->else_stmt) {
 		switch (ws->else_stmt->kind) {
-		case Ast_BlockStmt:
+			case Ast_BlockStmt:
 			me_build_stmt_list(p, ws->else_stmt->BlockStmt.stmts);
 			break;
-		case Ast_WhenStmt:
+			case Ast_WhenStmt:
 			me_build_when_stmt(p, &ws->else_stmt->WhenStmt);
 			break;
-		default:
+			default:
 			GB_PANIC("Invalid 'else' statement in 'when' statement");
 			break;
 		}
@@ -313,17 +313,17 @@ void me_build_stmt(meProcedure *p, Ast *node) {
 	}
 
 	switch (node->kind) {
-	case_ast_node(bs, EmptyStmt, node);
-	case_end;
+		case_ast_node(bs, EmptyStmt, node);
+		case_end;
 
-	case_ast_node(us, UsingStmt, node);
-	case_end;
+		case_ast_node(us, UsingStmt, node);
+		case_end;
 
-	case_ast_node(ws, WhenStmt, node);
+		case_ast_node(ws, WhenStmt, node);
 		me_build_when_stmt(p, ws);
-	case_end;
+		case_end;
 
-	case_ast_node(bs, BlockStmt, node);
+		case_ast_node(bs, BlockStmt, node);
 		meBlock *done = nullptr;
 		if (bs->label != nullptr) {
 			done = me_block_create(p, "block.done");
@@ -343,17 +343,49 @@ void me_build_stmt(meProcedure *p, Ast *node) {
 		if (bs->label != nullptr) {
 			me_target_list_pop(p);
 		}
-	case_end;
+		case_end;
 
-	case_ast_node(bs, BranchStmt, node);
+		case_ast_node(is, IfStmt, node);
+		me_scope_open(p, is->scope); // Scope #1
+		defer (me_scope_close(p, meDeferExit_Default, nullptr));
+
+		meBlock *then = me_block_create(p, "if.then");
+		meBlock *done = me_block_create(p, "if.done");
+		meBlock *else_ = nullptr;
+		if (is->else_stmt != nullptr) {
+			else_ = me_block_create(p, "if.else");
+		}
+
+		meValue cond = me_build_expr(p, is->cond);
+
+		// if true
+		me_block_start(p, then);
+		me_build_stmt(p, is->body);
+		me_emit_jump(p, done);
+
+		// if false
+		if (is->else_stmt != nullptr) {
+			me_block_start(p, else_);
+
+			me_scope_open(p, scope_of_node(is->else_stmt));
+			me_build_stmt(p, is->else_stmt);
+			me_scope_close(p, meDeferExit_Default, nullptr);
+
+			me_emit_jump(p, done);
+		}
+
+		me_block_start(p, done);
+		case_end;
+
+		case_ast_node(bs, BranchStmt, node);
 		meBlock *block = nullptr;
 
 		if (bs->label != nullptr) {
 			meBranchBlocks bb = me_lookup_branch_blocks(p, bs->label);
 			switch (bs->token.kind) {
-			case Token_break:    block = bb.break_;    break;
-			case Token_continue: block = bb.continue_; break;
-			case Token_fallthrough:
+				case Token_break:    block = bb.break_;    break;
+				case Token_continue: block = bb.continue_; break;
+				case Token_fallthrough:
 				GB_PANIC("fallthrough cannot have a label");
 				break;
 			}
@@ -364,9 +396,9 @@ void me_build_stmt(meProcedure *p, Ast *node) {
 				}
 
 				switch (bs->token.kind) {
-				case Token_break:       block = t->break_;       break;
-				case Token_continue:    block = t->continue_;    break;
-				case Token_fallthrough: block = t->fallthrough_; break;
+					case Token_break:       block = t->break_;       break;
+					case Token_continue:    block = t->continue_;    break;
+					case Token_fallthrough: block = t->fallthrough_; break;
 				}
 			}
 		}
@@ -375,15 +407,117 @@ void me_build_stmt(meProcedure *p, Ast *node) {
 		}
 		me_emit_jump(p, block);
 		me_block_start(p, me_block_create(p, "unreachable"));
-	case_end;
+		case_end;
 
-	case_ast_node(vd, ValueDecl, node);
+		case_ast_node(es, ExprStmt, node);
+		me_build_expr(p, es->expr);
+		case_end;
+
+		case_ast_node(vd, ValueDecl, node);
 		if (!vd->is_mutable) {
 			return;
 		}
 
 		// TODO: ValueDecl
+		__debugbreak();
+		case_end;
 
-	case_end;
+		default: __debugbreak();
 	}
+}
+
+static void me_print_value(meValue value) {
+	switch (value.kind) {
+		case meValue_Invalid:
+		break;
+		case meValue_Instruction:
+		printf("r%d", value.instr->id);
+		break;
+		case meValue_ConstantValue:
+		printf("(const)");
+		break;
+		case meValue_Block:
+		printf("(block %p)", value.proc);
+		break;
+		case meValue_Procedure:
+		printf("(proc %.*s)", LIT(value.proc->name));
+		break;
+		case meValue_GlobalVariable:
+		printf("(global %.*s)", LIT(value.global->name));
+		break;
+		case meValue_Parameter:
+		printf("%.*s", LIT(value.param->name));
+		break;
+
+		default:
+		GB_PANIC("Unsupported value");
+	}
+}
+
+void me_print_ir(meProcedure *p) {
+	if (str_eq(p->name, str_lit("foo"))) {
+		__debugbreak();
+	}
+
+	printf("(proc %.*s\n", LIT(p->name));
+	for_array(i, p->blocks) {
+		meBlock *b = p->blocks[i];
+
+		printf("  (block %.*s ; preds: ", LIT(b->name));
+		if (b->preds.count > 0) {
+			for_array(j, b->preds) {
+				if (j) printf(", ");
+				printf("%.*s", LIT(b->preds[j]->name));
+			}
+		}
+		printf("\n");
+
+		for_array(j, b->instructions) {
+			meInstruction* inst = b->instructions[j];
+
+			printf("    (def r%d (", inst->id);
+			switch (inst->op) {
+				case meOp_Add:   printf("add"); break;
+				case meOp_Sub:   printf("sub"); break;
+				case meOp_Mul:   printf("mul"); break;
+				case meOp_Div:   printf("div"); break;
+				case meOp_Rem:   printf("rem"); break;
+				case meOp_Shl:   printf("shl"); break;
+				case meOp_LShr:  printf("lshr"); break;
+				case meOp_AShr:  printf("ashr"); break;
+				case meOp_And:   printf("and"); break;
+				case meOp_Or:    printf("or"); break;
+				case meOp_Xor:   printf("xor"); break;
+				case meOp_Eq:    printf("eq"); break;
+				case meOp_NotEq: printf("noteq"); break;
+				case meOp_Lt:    printf("lt"); break;
+				case meOp_LtEq:  printf("lteq"); break;
+				case meOp_Gt:    printf("gt"); break;
+				case meOp_GtEq:  printf("gteq"); break;
+				case meOp_Min:   printf("min"); break;
+				case meOp_Max:   printf("max"); break;
+				case meOp_Call:  printf("call"); break;
+				break;
+				default:
+				GB_PANIC("Unsupported instruction");
+			}
+			printf(" ");
+
+			for (int k = 0; k < inst->op_count; k++) {
+				if (k) printf(" ");
+				me_print_value(inst->ops[k]);
+			}
+
+			if (inst->extra_ops.count > 0) {
+				printf(" ");
+
+				for (int k = 0; k < inst->extra_ops.count; k++) {
+					me_print_value(inst->extra_ops[k]);
+				}
+			}
+			printf("))\n");
+		}
+		printf("  )\n");
+	}
+	printf(")\n");
 }

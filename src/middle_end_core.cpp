@@ -69,20 +69,20 @@ bool me_is_const_nil(meValue value) {
 
 meValue me_use(meValue const &value) {
 	switch (value.kind) {
-	case meValue_Instruction:    value.instr->uses  += 1; break;
-	case meValue_Procedure:      value.proc->uses   += 1; break;
-	case meValue_GlobalVariable: value.global->uses += 1; break;
-	case meValue_Parameter:      value.param->uses  += 1; break;
+		case meValue_Instruction:    value.instr->uses  += 1; break;
+		case meValue_Procedure:      value.proc->uses   += 1; break;
+		case meValue_GlobalVariable: value.global->uses += 1; break;
+		case meValue_Parameter:      value.param->uses  += 1; break;
 	}
 	return value;
 }
 
 i32 me_uses(meValue const &value) {
 	switch (value.kind) {
-	case meValue_Instruction:    return value.instr->uses;
-	case meValue_Procedure:      return value.proc->uses;
-	case meValue_GlobalVariable: return value.global->uses;
-	case meValue_Parameter:      return value.param->uses;
+		case meValue_Instruction:    return value.instr->uses;
+		case meValue_Procedure:      return value.proc->uses;
+		case meValue_GlobalVariable: return value.global->uses;
+		case meValue_Parameter:      return value.param->uses;
 	}
 	GB_PANIC("invalid value to call on uses");
 	return 0;
@@ -90,10 +90,10 @@ i32 me_uses(meValue const &value) {
 
 void me_remove_use(meValue const &value) {
 	switch (value.kind) {
-	case meValue_Instruction:    GB_ASSERT(value.instr->uses  > 0); value.instr->uses  -= 1; break;
-	case meValue_Procedure:      GB_ASSERT(value.proc->uses   > 0); value.proc->uses   -= 1; break;
-	case meValue_GlobalVariable: GB_ASSERT(value.global->uses > 0); value.global->uses -= 1; break;
-	case meValue_Parameter:      GB_ASSERT(value.param->uses  > 0); value.param->uses  -= 1; break;
+		case meValue_Instruction:    GB_ASSERT(value.instr->uses  > 0); value.instr->uses  -= 1; break;
+		case meValue_Procedure:      GB_ASSERT(value.proc->uses   > 0); value.proc->uses   -= 1; break;
+		case meValue_GlobalVariable: GB_ASSERT(value.global->uses > 0); value.global->uses -= 1; break;
+		case meValue_Parameter:      GB_ASSERT(value.param->uses  > 0); value.param->uses  -= 1; break;
 	}
 }
 
@@ -107,19 +107,19 @@ meAddr me_addr(meValue value) {
 
 Type *me_type(meValue value) {
 	switch (value.kind) {
-	case meValue_Invalid:
+		case meValue_Invalid:
 		return nullptr;
-	case meValue_Instruction:
+		case meValue_Instruction:
 		return value.instr->type;
-	case meValue_ConstantValue:
+		case meValue_ConstantValue:
 		return value.constant->type;
-	case meValue_Block:
+		case meValue_Block:
 		return nullptr;
-	case meValue_Procedure:
+		case meValue_Procedure:
 		return value.proc->type;
-	case meValue_GlobalVariable:
+		case meValue_GlobalVariable:
 		return value.global->type;
-	case meValue_Parameter:
+		case meValue_Parameter:
 		return value.param->entity->type;
 	}
 	return nullptr;
@@ -173,11 +173,12 @@ void me_add_foreign_library_path(meModule *m, Entity *e) {
 		bool ok = true;
 		for_array(path_index, m->foreign_library_paths) {
 			String path = m->foreign_library_paths[path_index];
-	#if defined(GB_SYSTEM_WINDOWS)
-			if (str_eq_ignore_case(path, library_path)) {
-	#else
-			if (str_eq(path, library_path)) {
-	#endif
+#if defined(GB_SYSTEM_WINDOWS)
+			if (str_eq_ignore_case(path, library_path))
+#else
+			if (str_eq(path, library_path))
+#endif
+			{
 				ok = false;
 				break;
 			}
@@ -218,9 +219,9 @@ String me_mangle_name(meModule *m, Entity *e) {
 
 	char *new_name = gb_alloc_array(permanent_allocator(), char, max_len);
 	isize new_name_len = gb_snprintf(
-		new_name, max_len,
-		"%.*s.%.*s", LIT(pkgn), LIT(name)
-	);
+									 new_name, max_len,
+									 "%.*s.%.*s", LIT(pkgn), LIT(name)
+									 );
 	if (require_suffix_id) {
 		char *str = new_name + new_name_len-1;
 		isize len = max_len-new_name_len;
@@ -345,11 +346,11 @@ meInstruction *me_last_instruction(meBlock *block) {
 
 bool me_is_instruction_terminator(meOpKind op) {
 	switch (op) {
-	case meOp_Unreachable:
-	case meOp_Return:
-	case meOp_Jump:
-	case meOp_CondJump:
-	case meOp_Switch:
+		case meOp_Unreachable:
+		case meOp_Return:
+		case meOp_Jump:
+		case meOp_CondJump:
+		case meOp_Switch:
 		return true;
 	}
 	return false;
@@ -363,11 +364,13 @@ bool me_is_last_instruction_terminator(meBlock *b) {
 
 meBlock *me_block_create(meProcedure *p, char const *name) {
 	auto *b = me_new(meBlock);
+	b->name = make_string((u8 const*) name, -1);
 	b->scope = p->curr_scope;
 	b->scope_index = p->scope_index;
 
 	b->preds.allocator = heap_allocator();
 	b->succs.allocator = heap_allocator();
+	b->instructions.allocator = heap_allocator();
 
 	array_add(&p->blocks, b);
 
@@ -397,6 +400,7 @@ meContextData *me_push_context_onto_stack_from_implicit_parameter(meProcedure *p
 meInstruction *me_create_instruction(meProcedure *p, meOpKind op) {
 	meInstruction *instr = me_new(meInstruction);
 	instr->op = op;
+	instr->id = p->inst_counter;
 
 	GB_ASSERT(p->curr_block != nullptr);
 
@@ -510,27 +514,27 @@ meValue me_emit_binary_op(meProcedure *p, meOpKind op, meValue left, meValue rig
 	GB_ASSERT(type != nullptr);
 
 	switch (op) {
-	case meOp_Add:
-	case meOp_Sub:
-	case meOp_Mul:
-	case meOp_Div:
-	case meOp_Rem:
-	case meOp_Shl:
-	case meOp_LShr:
-	case meOp_AShr:
-	case meOp_And:
-	case meOp_Or:
-	case meOp_Xor:
-	case meOp_Eq:
-	case meOp_NotEq:
-	case meOp_Lt:
-	case meOp_LtEq:
-	case meOp_Gt:
-	case meOp_GtEq:
-	case meOp_Min:
-	case meOp_Max:
+		case meOp_Add:
+		case meOp_Sub:
+		case meOp_Mul:
+		case meOp_Div:
+		case meOp_Rem:
+		case meOp_Shl:
+		case meOp_LShr:
+		case meOp_AShr:
+		case meOp_And:
+		case meOp_Or:
+		case meOp_Xor:
+		case meOp_Eq:
+		case meOp_NotEq:
+		case meOp_Lt:
+		case meOp_LtEq:
+		case meOp_Gt:
+		case meOp_GtEq:
+		case meOp_Min:
+		case meOp_Max:
 		break;
-	default:
+		default:
 		GB_PANIC("Unsupported binary op");
 	}
 
@@ -543,6 +547,19 @@ meValue me_emit_binary_op(meProcedure *p, meOpKind op, meValue left, meValue rig
 	return me_value(b);
 }
 
+meValue me_add_param(meProcedure *p, Type *type, Entity *e) {
+	GB_ASSERT(e->kind == Entity_Variable);
+	int id = p->param_count++;
+
+	meParameter *param = me_new(meParameter);
+	param->name = e->Variable.link_name;
+	param->entity = e;
+	param->parent = p;
+	param->id = id;
+	param->uses = 0;
+
+	return me_value(param);
+}
 
 meAddr me_add_local(meProcedure *p, Type *type, Entity *e, bool zero_init) {
 	meInstruction *var = nullptr;
@@ -560,6 +577,9 @@ meAddr me_add_local(meProcedure *p, Type *type, Entity *e, bool zero_init) {
 	var->alignment = alignment;
 
 	// TODO(bill): ZERO me_add_local
+	if (zero_init) {
+
+	}
 
 	return me_addr(me_value(var));
 }
@@ -631,7 +651,6 @@ void me_emit_unaligned_store(meProcedure *p, meValue dst, meValue src) {
 	v->ops[1] = me_use(src);
 	v->op_count = 2;
 }
-
 
 meValue me_const_int(i64 value, Type *type) {
 	meConstant *constant = me_new(meConstant);
@@ -745,10 +764,10 @@ meValue me_emit_transmute(meProcedure *p, meValue value, Type *dst_type) {
 
 meValue me_emit_comp_against_nil(meProcedure *p, meOpKind op, meValue value) {
 	switch (op) {
-	case meOp_Eq:
-	case meOp_NotEq:
+		case meOp_Eq:
+		case meOp_NotEq:
 		break;
-	default:
+		default:
 		GB_PANIC("Invalid comparison against nil op");
 	}
 
@@ -764,14 +783,14 @@ meValue me_emit_comp_against_nil(meProcedure *p, meOpKind op, meValue value) {
 
 meValue me_emit_comp(meProcedure *p, meOpKind op, meValue left, meValue right) {
 	switch (op) {
-	case meOp_Eq:
-	case meOp_NotEq:
-	case meOp_Lt:
-	case meOp_LtEq:
-	case meOp_Gt:
-	case meOp_GtEq:
+		case meOp_Eq:
+		case meOp_NotEq:
+		case meOp_Lt:
+		case meOp_LtEq:
+		case meOp_Gt:
+		case meOp_GtEq:
 		break;
-	default:
+		default:
 		GB_PANIC("Invalid comparison op");
 	}
 
@@ -879,9 +898,15 @@ meValue me_emit_select(meProcedure *p, meValue cond, meValue left, meValue right
 }
 
 meValue me_emit_call(meProcedure *p, meValue proc, Slice<meValue> const &arguments, u16 instruction_flags = 0) {
-	GB_PANIC("TODO");
-	return {};
+	meInstruction *v = me_create_instruction(p, meOp_Call);
+	v->type = me_type(proc);
+	v->ops[0] = me_use(proc);
+	v->op_count = 1;
+
+	v->extra_ops = arguments;
+	return me_value(v);
 }
+
 meValue me_emit_built_call(meProcedure *p, BuiltinProcId id, Slice<meValue> const &arguments) {
 	GB_PANIC("TODO");
 	return {};

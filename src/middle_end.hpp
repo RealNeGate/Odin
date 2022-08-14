@@ -26,6 +26,7 @@ enum meValueKind : u8 {
 struct meValue {
 	meValueKind kind;
 	union {
+		void             *raw;
 		meInstruction    *instr;
 		meConstant       *constant;
 		meBlock          *block;
@@ -133,6 +134,10 @@ enum meLinkageKind : u8 {
 	meLinkage_Internal,
 	meLinkage_LinkOnce,
 	meLinkage_Export,
+
+	// NOTE(NeGate): is this correct?
+	meLinkage_External,
+	meLinkage_DLLExport,
 };
 
 
@@ -144,6 +149,7 @@ struct meInstruction {
 	u16                  flags;
 	u16                  alignment;
 	u16                  uses;
+	u32                  id;
 
 	Type *       type;
 	meProcedure *parent;
@@ -152,7 +158,7 @@ struct meInstruction {
 	meValue ops[me_INSTRUCTION_MAX_ARG_COUNT];
 	isize op_count;
 
-	Slice<meValue> *extra_ops; // non-null if used
+	Slice<meValue> extra_ops;
 };
 
 struct meConstant {
@@ -208,6 +214,7 @@ struct meParameter {
 	String       name;
 	Entity *     entity;
 	meProcedure *parent;
+	i32          id;
 	i32          uses;
 };
 
@@ -318,6 +325,8 @@ struct meProcedure {
 	i32              uses;
 	BuiltinProcId    builtin_id;
 
+	u32  inst_counter;
+	i32  param_count;
 	u16  state_flags;
 	bool is_done;
 
@@ -397,3 +406,4 @@ void me_build_stmt(meProcedure *p, Ast *stmt);
 meValue me_build_expr(meProcedure *p, Ast *expr);
 meValue me_emit_conv(meProcedure *p, meValue value, Type *type);
 
+void me_print_ir(meProcedure *p);
