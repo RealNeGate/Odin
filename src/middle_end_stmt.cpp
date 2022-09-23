@@ -276,7 +276,227 @@ void me_build_when_stmt(meProcedure *p, AstWhenStmt *ws) {
 	}
 }
 
+meValue me_emit_struct_ev(lbProcedure *p, meValue s, i32 index) {
+	if (s->kind == meValue_Instruction && (s->instr->op == meOp_Load || s->instr->op == meOp_UnalignedLoad)) {
+		meValue res = {};
+		res.value = s->instr->ops[0];
+		res.type = alloc_type_pointer(s.type);
+		meValue ptr = lb_emit_struct_ep(p, res, index);
+		return lb_emit_load(p, ptr);
+	}
 
+	Type *t = base_type(s.type);
+	Type *result_type = nullptr;
+
+	switch (t->kind) {
+		case Type_Basic:
+		switch (t->Basic.kind) {
+			case Basic_string:
+			switch (index) {
+				case 0: result_type = t_u8_ptr; break;
+				case 1: result_type = t_int;    break;
+			}
+			break;
+			case Basic_any:
+			switch (index) {
+				case 0: result_type = t_rawptr; break;
+				case 1: result_type = t_typeid; break;
+			}
+			break;
+			case Basic_complex32:
+			case Basic_complex64:
+			case Basic_complex128:
+			{
+				Type *ft = base_complex_elem_type(t);
+				switch (index) {
+					case 0: result_type = ft; break;
+					case 1: result_type = ft; break;
+				}
+				break;
+			}
+			case Basic_quaternion64:
+			case Basic_quaternion128:
+			case Basic_quaternion256:
+			{
+				Type *ft = base_complex_elem_type(t);
+				switch (index) {
+					case 0: result_type = ft; break;
+					case 1: result_type = ft; break;
+					case 2: result_type = ft; break;
+					case 3: result_type = ft; break;
+				}
+				break;
+			}
+		}
+		break;
+		case Type_Struct:
+		result_type = get_struct_field_type(t, index);
+		break;
+		case Type_Union:
+		GB_ASSERT(index == -1);
+		// return lb_emit_union_tag_value(p, s);
+		GB_PANIC("lb_emit_union_tag_value");
+
+		case Type_Tuple:
+		GB_ASSERT(t->Tuple.variables.count > 0);
+		result_type = t->Tuple.variables[index]->type;
+		if (t->Tuple.variables.count == 1) {
+			return s;
+		}
+		break;
+		case Type_Slice:
+		switch (index) {
+			case 0: result_type = alloc_type_pointer(t->Slice.elem); break;
+			case 1: result_type = t_int; break;
+		}
+		break;
+		case Type_DynamicArray:
+		switch (index) {
+			case 0: result_type = alloc_type_pointer(t->DynamicArray.elem); break;
+			case 1: result_type = t_int;                                    break;
+			case 2: result_type = t_int;                                    break;
+			case 3: result_type = t_allocator;                              break;
+		}
+		break;
+
+		case Type_Map:
+		{
+			init_map_internal_types(t);
+			Type *gst = t->Map.generated_struct_type;
+			switch (index) {
+				case 0: result_type = get_struct_field_type(gst, 0); break;
+				case 1: result_type = get_struct_field_type(gst, 1); break;
+			}
+		}
+		break;
+
+		case Type_Array:
+		result_type = t->Array.elem;
+		break;
+
+		default:
+		GB_PANIC("TODO(bill): struct_ev type: %s, %d", type_to_string(s.type), index);
+		break;
+	}
+
+	GB_ASSERT_MSG(result_type != nullptr, "%s, %d", type_to_string(s.type), index);
+
+	index = 0;// lb_convert_struct_index(p->module, t, index);
+	__debugbreak();
+
+	lbValue res = {};
+	res.value = LLVMBuildExtractValue(p->builder, s.value, cast(unsigned)index, "");
+	res.type = result_type;
+	return res;
+}
+
+void me_build_assignment(meProcedure *p, Array<meAddr> &lvals, Slice<Ast *> const &values) {
+	if (values.count == 0) {
+		return;
+	}
+
+	auto inits = array_make<meValue>(permanent_allocator(), 0, lvals.count);
+
+	for_array(i, values) {
+		Ast *rhs = values[i];
+		if (is_type_tuple(type_of_expr(rhs))) {
+			meValue init = me_build_expr(p, rhs);
+			Type *t = init.type;
+			GB_ASSERT(t->kind == Type_Tuple);
+			for_array(i, t->Tuple.variables) {
+				meValue v = me_emit_struct_ev(p, init, cast(i32)i);
+				array_add(&inits, v);
+			}
+		} else {
+			__debugbreak();
+			/*auto prev_hint = me_set_copy_elision_hint(p, lvals[inits.count], rhs);
+			meValue init = me_build_expr(p, rhs);
+			if (p->copy_elision_hint.used) {
+				lvals[inits.count] = {}; // zero lval
+			}
+			me_reset_copy_elision_hint(p, prev_hint);
+			array_add(&inits, init);*/
+		}
+	}
+
+	GB_ASSERT(lvals.count == inits.count);
+	for_array(i, inits) {
+		meAddr lval = lvals[i];
+		meValue init = inits[i];
+		me_addr_store(p, lval, init);
+	}
+}
+
+void me_build_assign_stmt(meProcedure *p, AstAssignStmt *as) {
+	if (as->op.kind == Token_Eq) {
+		auto lvals = array_make<meAddr>(permanent_allocator(), 0, as->lhs.count);
+
+		for_array(i, as->lhs) {
+			Ast *lhs = as->lhs[i];
+			meAddr lval = {};
+			if (!is_blank_ident(lhs)) {
+				lval = me_build_addr(p, lhs);
+			}
+			array_add(&lvals, lval);
+		}
+		me_build_assignment(p, lvals, as->rhs);
+		return;
+	}
+
+	GB_ASSERT(as->lhs.count == 1);
+	GB_ASSERT(as->rhs.count == 1);
+	// NOTE(bill): Only 1 += 1 is allowed, no tuples
+	// +=, -=, etc
+	i32 op_ = cast(i32)as->op.kind;
+	op_ += Token_Add - Token_AddEq; // Convert += to +
+	TokenKind op = cast(TokenKind)op_;
+	if (op == Token_CmpAnd || op == Token_CmpOr) {
+		Type *type = as->lhs[0]->tav.type;
+		meValue new_value = me_emit_logical_binary_expr(p, op, as->lhs[0], as->rhs[0], type);
+
+		meAddr lhs = me_build_addr(p, as->lhs[0]);
+		me_addr_store(p, lhs, new_value);
+	} else {
+		meAddr lhs = me_build_addr(p, as->lhs[0]);
+		meValue value = me_build_expr(p, as->rhs[0]);
+
+		Type *lhs_type = me_addr_type(lhs);
+		if (is_type_array(lhs_type)) {
+			__debugbreak();
+			// me_build_assign_stmt_array(p, op, lhs, value);
+			return;
+		} else {
+			meValue old_value = me_addr_load(p, lhs);
+			Type *type = old_value.type;
+
+			meValue change = me_emit_conv(p, value, type);
+			meValue new_value = me_emit_arith(p, op, old_value, change, type);
+			me_addr_store(p, lhs, new_value);
+		}
+	}
+}
+
+void me_build_return_stmt(meProcedure *p, Slice<Ast *> const &return_results) {
+	TypeTuple *tuple  = &p->type->Proc.results->Tuple;
+	isize return_count = p->type->Proc.result_count;
+	// isize res_count = return_results.count;
+
+	me_emit_defer_stmts(p, meDeferExit_Return, nullptr);
+
+	if (return_count == 0) {
+		// No return values
+		me_emit_return_empty(p);
+		return;
+	} else if (return_count == 1) {
+		Entity *e = tuple->variables[0];
+
+		meValue res = me_build_expr(p, return_results[0]);
+		res = me_emit_conv(p, res, e->type);
+		me_emit_return(p, res);
+	} else {
+		GB_PANIC("TODO");
+	}
+}
 
 void me_build_stmt(meProcedure *p, Ast *node) {
 	Ast *prev_stmt = p->curr_stmt;
@@ -413,6 +633,10 @@ void me_build_stmt(meProcedure *p, Ast *node) {
 		me_build_expr(p, es->expr);
 		case_end;
 
+		case_ast_node(as, AssignStmt, node);
+		me_build_assign_stmt(p, as);
+		case_end;
+
 		case_ast_node(vd, ValueDecl, node);
 		if (!vd->is_mutable) {
 			return;
@@ -420,6 +644,10 @@ void me_build_stmt(meProcedure *p, Ast *node) {
 
 		// TODO: ValueDecl
 		__debugbreak();
+		case_end;
+
+		case_ast_node(rs, ReturnStmt, node);
+		me_build_return_stmt(p, rs->results);
 		case_end;
 
 		default: __debugbreak();
@@ -497,6 +725,7 @@ void me_print_ir(meProcedure *p) {
 				case meOp_Min:   printf("min"); break;
 				case meOp_Max:   printf("max"); break;
 				case meOp_Call:  printf("call"); break;
+				case meOp_Return:printf("ret"); break;
 				break;
 				default:
 				GB_PANIC("Unsupported instruction");

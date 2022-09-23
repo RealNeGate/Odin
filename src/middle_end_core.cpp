@@ -173,11 +173,11 @@ void me_add_foreign_library_path(meModule *m, Entity *e) {
 		bool ok = true;
 		for_array(path_index, m->foreign_library_paths) {
 			String path = m->foreign_library_paths[path_index];
-#if defined(GB_SYSTEM_WINDOWS)
+			#if defined(GB_SYSTEM_WINDOWS)
 			if (str_eq_ignore_case(path, library_path))
-#else
+				#else
 			if (str_eq(path, library_path))
-#endif
+				#endif
 			{
 				ok = false;
 				break;
@@ -219,9 +219,9 @@ String me_mangle_name(meModule *m, Entity *e) {
 
 	char *new_name = gb_alloc_array(permanent_allocator(), char, max_len);
 	isize new_name_len = gb_snprintf(
-									 new_name, max_len,
-									 "%.*s.%.*s", LIT(pkgn), LIT(name)
-									 );
+		new_name, max_len,
+		"%.*s.%.*s", LIT(pkgn), LIT(name)
+	);
 	if (require_suffix_id) {
 		char *str = new_name + new_name_len-1;
 		isize len = max_len-new_name_len;
@@ -652,6 +652,15 @@ void me_emit_unaligned_store(meProcedure *p, meValue dst, meValue src) {
 	v->op_count = 2;
 }
 
+meValue me_const_nil(Type *type) {
+	GB_ASSERT(is_type_pointer(type));
+
+	meConstant *constant = me_new(meConstant);
+	constant->value = exact_value_pointer(0);
+	constant->type = type;
+	return me_value(constant);
+}
+
 meValue me_const_int(i64 value, Type *type) {
 	meConstant *constant = me_new(meConstant);
 	constant->value = exact_value_i64(value);
@@ -731,7 +740,7 @@ meValue me_emit_conv(meProcedure *p, meValue value, Type *dst_type) {
 	if (are_types_identical(src_type, dst_type)) {
 		return value;
 	}
-	GB_ASSERT(internal_check_is_castable_to(src_type, dst_type));
+	// GB_ASSERT(internal_check_is_castable_to(src_type, dst_type));
 
 
 	meInstruction *v = me_create_instruction(p, meOp_Cast);

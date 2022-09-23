@@ -22,7 +22,7 @@ meValue me_handle_param_value(meProcedure *p, Type *parameter_type, ParameterVal
 		}
 
 		case ParameterValue_Nil:
-		return me_const_int(0, parameter_type);
+		return me_const_nil(parameter_type);
 		case ParameterValue_Location:
 		{
 			// String proc_name = {};
@@ -34,7 +34,7 @@ meValue me_handle_param_value(meProcedure *p, Type *parameter_type, ParameterVal
 		case ParameterValue_Value:
 		return me_build_expr(p, param_value.ast_value);
 	}
-	return me_const_int(0, parameter_type);
+	return me_const_nil(parameter_type);
 }
 
 meValue me_build_call_expr(meProcedure *p, Ast *expr) {
