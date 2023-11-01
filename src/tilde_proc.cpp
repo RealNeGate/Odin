@@ -95,7 +95,7 @@ gb_internal cgProcedure *cg_procedure_create(cgModule *m, Entity *entity, bool i
 	}
 
 	if (p->symbol == nullptr)  {
-		p->func = tb_function_create(m->mod, link_name.len, cast(char const *)link_name.text, linkage, TB_COMDAT_NONE);
+		p->func = tb_function_create(m->mod, link_name.len, cast(char const *)link_name.text, linkage);
 
 		p->debug_type = cg_debug_type_for_proc(m, p->type);
 		p->proto = tb_prototype_from_dbg(m->mod, p->debug_type);
@@ -147,8 +147,7 @@ gb_internal cgProcedure *cg_procedure_create_dummy(cgModule *m, String const &li
 	map_init(&p->soa_values_map);
 
 	TB_Linkage linkage = TB_LINKAGE_PRIVATE;
-
-	p->func = tb_function_create(m->mod, link_name.len, cast(char const *)link_name.text, linkage, TB_COMDAT_NONE);
+	p->func = tb_function_create(m->mod, link_name.len, cast(char const *)link_name.text, linkage);
 
 	p->debug_type = cg_debug_type_for_proc(m, p->type);
 	p->proto = tb_prototype_from_dbg(m->mod, p->debug_type);
@@ -224,7 +223,7 @@ gb_internal void cg_procedure_begin(cgProcedure *p) {
 		return;
 	}
 
-	tb_function_set_prototype(p->func, p->proto, cg_arena());
+	tb_function_set_prototype(p->func, tb_module_get_text(p->module->mod), p->proto, cg_arena());
 
 	if (p->body == nullptr) {
 		return;
@@ -372,35 +371,35 @@ gb_internal WORKER_TASK_PROC(cg_procedure_compile_worker_proc) {
 	defer (tb_pass_exit(opt));
 
 	// optimization passes
-	if (false) {
-		tb_pass_peephole(opt, TB_PEEPHOLE_ALL);
-		tb_pass_mem2reg(opt);
-		tb_pass_peephole(opt, TB_PEEPHOLE_ALL);
+	if (p->entity) {
+		switch (p->entity->Procedure.optimization_mode) {
+		case ProcedureOptimizationMode_Minimal:
+		case ProcedureOptimizationMode_Size:
+		case ProcedureOptimizationMode_Speed:
+			tb_pass_optimize(opt);
+			break;
+		}
 	}
 
 	bool emit_asm = false;
 	if (
-	    // string_starts_with(p->name, str_lit("runtime@_windows_default_alloc_or_resize")) ||
-	    false
+		// string_starts_with(p->name, str_lit("runtime@print_string")) ||
+		false
 	) {
 		emit_asm = true;
 	}
 
 	// emit ir
 	if (
-	    // string_starts_with(p->name, str_lit("main@")) ||
-	    false
+		// string_starts_with(p->name, str_lit("runtime@_os_write")) ||
+		false
 	) { // IR Printing
-		TB_Arena *arena = cg_arena();
-		TB_Passes *passes = tb_pass_enter(p->func, arena);
-		defer (tb_pass_exit(passes));
-
-		tb_pass_print(passes);
+		tb_pass_print(opt);
 		fprintf(stdout, "\n");
 		fflush(stdout);
 	}
 	if (false) { // GraphViz printing
-		tb_function_print(p->func, tb_default_print_callback, stdout);
+		tb_pass_print_dot(opt, tb_default_print_callback, stdout);
 	}
 
 	// compile

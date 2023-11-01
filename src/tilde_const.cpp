@@ -705,7 +705,7 @@ gb_internal TB_Global *cg_global_const_comp_literal(cgModule *m, Type *original_
 		i64 align = type_align_of(original_type);
 
 		// READ ONLY?
-		TB_ModuleSection *section = nullptr;
+		TB_ModuleSectionHandle section = -1;
 		if (is_type_string(original_type) || is_type_cstring(original_type)) {
 			section = tb_module_get_rdata(m->mod);
 		} else {
@@ -968,7 +968,7 @@ gb_internal cgValue cg_const_value(cgProcedure *p, Type *type, ExactValue const 
 
 	case ExactValue_Float:
 		GB_ASSERT(!TB_IS_VOID_TYPE(dt));
-		GB_ASSERT(dt.raw != TB_TYPE_F16.raw);
+		// GB_ASSERT(dt.raw != TB_TYPE_F16.raw);
 		GB_ASSERT(!is_type_different_to_arch_endianness(type));
 		{
 			f64 f = exact_value_to_f64(value);

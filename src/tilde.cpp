@@ -47,7 +47,7 @@ gb_internal TB_DataType cg_data_type(Type *t) {
 		case Basic_typeid:
 			return TB_TYPE_INTN(cast(u16)gb_min(8*sz, 64));
 
-		case Basic_f16: return TB_TYPE_F16;
+		// case Basic_f16: return TB_TYPE_F16;
 		case Basic_f32: return TB_TYPE_F32;
 		case Basic_f64: return TB_TYPE_F64;
 
@@ -74,11 +74,11 @@ gb_internal TB_DataType cg_data_type(Type *t) {
 		case Basic_u128be:
 			return TB_TYPE_INTN(cast(u16)gb_min(8*sz, 64));
 
-		case Basic_f16le: return TB_TYPE_F16;
+		// case Basic_f16le: return TB_TYPE_F16;
 		case Basic_f32le: return TB_TYPE_F32;
 		case Basic_f64le: return TB_TYPE_F64;
 
-		case Basic_f16be: return TB_TYPE_F16;
+		// case Basic_f16be: return TB_TYPE_F16;
 		case Basic_f32be: return TB_TYPE_F32;
 		case Basic_f64be: return TB_TYPE_F64;
 		}
@@ -373,11 +373,11 @@ gb_internal bool cg_global_variables_create(cgModule *m, Array<cgGlobalVariable>
 		TB_Global *global = tb_global_create(m->mod, name.len, cast(char const *)name.text, debug_type, linkage);
 		cgValue g = cg_value(global, alloc_type_pointer(e->type));
 
-		TB_ModuleSection *section = tb_module_get_data(m->mod);
-
+		TB_ModuleSectionHandle section = tb_module_get_data(m->mod);
 		if (e->Variable.thread_local_model != "") {
 			section = tb_module_get_tls(m->mod);
 		}
+
 		if (e->Variable.link_section.len > 0) {
 			// TODO(bill): custom module sections
 			// LLVMSetSection(g.value, alloc_cstring(permanent_allocator(), e->Variable.link_section));
